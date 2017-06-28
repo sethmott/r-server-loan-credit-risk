@@ -89,9 +89,9 @@ The database is created if it does not not already exist, and the connection str
 
 In this step, the raw data is loaded into SQL in two tables called `Loan` and `Borrower`. They are then merged into one, `Merged`.
 
-Then, if there are missing values, the data is cleaned by replacing missing values with the mode (categorical variables) or mean (float variables). This assumes that the ID variables (`loanId` and `memberId`) as well as `loanStatus` do not contain blanks. 
+Then, if there are missing values, the data is cleaned by replacing missing values with the mode (for categorical variables) or mean (for float variables). This assumes that the ID variables (`loanId` and `memberId`) as well as `loanStatus` do not contain blanks. 
 
-The cleaned data is written to the SQL table `Merged_Cleaned`. The Statistics are written to SQL if you want to run a batch scoring from SQL after a development stage in R. 
+The cleaned data is written to the SQL table `Merged_Cleaned`. The `Stats` are written to SQL if you want to run a batch scoring from SQL after a development stage in R. 
 
 ### Input:
 * Raw data: **Loan.csv** and **Borrower.csv**.
@@ -114,19 +114,19 @@ The cleaned data is written to the SQL table `Merged_Cleaned`. The Statistics ar
 For feature engineering, we want to design new features: 
 
 * Categorical versions of all the numeric variables. This is done for interpretability and is a standard practice in the Credit Score industry. 
-* `isBad`: the label, specifying whether the loan has been charged off or has defaulted (`isBad` = 1) or if it is in good standing (`isBad` = 0), based on `loanStatus`. 
+* `isBad`: the label, specifying whether the loan has defaulted (`isBad` = 1) or if it is in good standing (`isBad` = 0), based on `loanStatus`. 
 
 This is done by following these steps:
 
-1. Create the label `isBad` with `rxDataStep` function into the table `Merged_Labeled`. 
+1. Create the label `isBad` in the table `Merged_Labeled` with `rxDataStep` function. 
 
-2.  Split the data set into a training and a testing set. This is done by selecting randomly 70% of `loanId` to be part of the training set. In order to ensure repeatability, `loanId` values are mapped to integers through a hash function, with the mapping and `loanId` written to the `Hash_Id` SQL table. The splitting is performed prior to feature engineering instead of in the training step because the feature engineering creates bins based on conditional inference trees that should be built only on the training set. If the bins were computed with the whole data set, the evaluation step would be rigged. 
+2.  Split the data set into a training and a testing set. This is done by selecting randomly 70% of `loanId` to be part of the training set. In order to ensure repeatability, `loanId` values are mapped to integers through a hash function, with the mapping and `loanId` written to the `Hash_Id` SQL table. The splitting is performed prior to feature engineering because the feature engineering step creates bins based on conditional inference trees that should be built only on the training set. If the bins were computed with the whole data set the evaluation step would be rigged. 
 
-3. Compute the bins that will be used to create the categorical variables. It uses the CRAN R package `smbinning` that builds a conditional inference tree on the training set (to which we append the binary label isBad) in order to get the optimal bins to be used for the numeric variables we want to bucketize. Because some of the numeric variables have too few unique values, or because the binning function did not return significant splits, we decided to manually specify default bins in case smbinning does not return the splits. These default bins have been determined through an analysis of the data or through running `smbinning` on a larger data set. 
+3. Compute the bins that will be used to create the categorical variables. It uses the CRAN R package `smbinning` that builds a conditional inference tree on the training set (to which we append the binary label isBad) in order to get the optimal bins to be used for the numeric variables we want to bin. Because some of the numeric variables have too few unique values, or because the binning function did not return significant splits, we manually specify default bins in case smbinning does not return the splits. These default bins have been determined through an analysis of the data or through running `smbinning` on a larger data set. 
 
-The bins computation is optimized by running `smbinning` in parallel across the different cores of the server, through the use of `rxExec` function applied in a Local Parallel (`localpar`) compute context. The `rxElemArg` argument it takes is used to specify the list of variables (here the numeric variables names) we want to apply smbinning on. They are saved to SQL in case you want to run a production stage with SQL after running a development stage in R.  
+The bins computation is optimized by running `smbinning` in parallel across the different cores of the server, through the use of `rxExec` function applied in a Local Parallel (`localpar`) compute context. The `rxElemArg` argument it takes is used to specify the list of variables (here the numeric variables names) we want to apply `smbinning` on. They are saved to SQL in case you want to run a production stage with SQL after running a development stage in R.  
 
-4.  Bucketize the variables based on the computed/specified bins with the function `bucketize`, wrapped into an `rxDataStep` function. The final output is written into the SQL table `Merged_Features`.
+4.  Bin the variables based on the computed/specified bins with the function `bucketize`, wrapped into an `rxDataStep` function. The final output is written into the SQL table `Merged_Features`.
 
 ### Input:
 
@@ -150,25 +150,25 @@ The bins computation is optimized by running `smbinning` in parallel across the 
 
 ![Visualize](images/step3.png?raw=true)
 
-After converting the strings to factors (with `stringsAsFactors = TRUE`), we get the variables information (types and levels) of the `Merged_Features` SQL table with `rxCreateColInfo`. We then point to the training and testing sets with the correct column information. 
+After converting the strings to factors (with `stringsAsFactors = TRUE`), we get the variable information (types and levels) for the `Merged_Features` SQL table with `rxCreateColInfo`. We then point to the training and testing sets with the correct column information. 
 
 Then we build a Logistic Regression Model on the training set. The trained model is serialized and uploaded to a SQL table `Model` if needed later, through an Odbc connection. 
 
-Training a Logistic Regression for loan credit risk prediction is a standard practice in the Credit Score industry. Contrary to more complex models such as random forests or neural networks, it is easily understandable through the simple formula generated during the training. Also, the presence of bucketed numeric variables helps understand the impact of each category and variable on the probability of default. The variables used and their respective coefficients, sorted by order of magnitude, are stored in the data frame `Logistic_Coeff` returned by the step 3 function.
+Training a Logistic Regression for loan credit risk prediction is a standard practice in the Credit Score industry. Contrary to more complex models such as random forests or neural networks, it is easily understandable through the simple formula generated during training. Also, the presence of binned numeric variables helps understand the impact of the categories within a variable, and of the variables themselves, on the probability of default. The variables used and their respective coefficients, sorted by order of magnitude, are stored in the data frame `Logistic_Coeff` returned by the step 3 function.
 
 Finally, we compute predictions on the testing set, as well as performance metrics: 
 
-* **KS** (Kolmogorov-Smirnov) statistic. The KS statistic is a standard performance metric in the credit score industry. It represents how well the model can differenciate between the Good Credit applicants and the Bad Credit applicants in the testing set. We also draw the KS plot which corresponds to two cumulative distributions of the predicted probabilities. One is a subset of the predictions for which the observed values were bad loans (is_bad = 1) and the other concerns good loans (is_bad = 0). KS will be the biggest distance between those two curves. 
+* **KS** (Kolmogorov-Smirnov) statistic. The KS statistic is a standard performance metric in the credit score industry. It represents how well the model can differenciate between the Good Credit applicants and the Bad Credit applicants in the testing set. We also draw the KS plot which corresponds to two cumulative distributions of the predicted probabilities. One is a subset of the predictions for which the observed values were bad loans (`is_bad` = 1) and the other concerns good loans (`is_bad` = 0). KS will be the biggest distance between those two curves. 
 
 ![Visualize](images/KS.png?raw=true)
 
 
-* Various classification performance metrics computed on the confusion matrix. These are dependent on the threshold chosen to decide whether to classify a predicted probability as good or bad. Here, we use as a threshold the point of the x axis in the KS plot where the curves are the farthest possible.   
-* **AUC** (Area Under the Curve) for the ROC. This represents how well the model can differenciate between the Good Credit applicants from the Bad Credit applicants given a good decision threshold in the testing set. We draw the ROC, representing the true positive rate in function of the false positive rate for various possible cutoffs. 
+* Various classification performance metrics computed on the confusion matrix. These are dependent on the threshold chosen to decide whether to classify a predicted probability as good or bad. Here, we use as a threshold the point on the x axis in the KS plot where the curves are the farthest possible.   
+* **AUC** (Area Under the ROC Curve). This represents how well the model can differenciate between the Good Credit applicants from the Bad Credit applicants given a good decision threshold in the testing set. We draw the ROC, which represents the true positive rate as a function of the false positive rate for various possible cutoffs (along the curve). 
 
 ![Visualize](images/ROC.png?raw=true)
 
-* **The Lift Chart**. The lift chart represents how well the model can perform compared to a naive approach. For instance, at the level where a naive effort could produce a 10% rate of positive predictions, we draw a vertical line on x = 0.10 and read the lift value where the vertical line crosses the lift curve. If the lift value is 3, it means that the model would produce 3 times the 10%, ie. 30% rate of positive predictions. 
+* **The Lift Chart**. The lift chart represents how well the model can perform compared to a naive approach. For instance, at the level where a naive effort could produce a 10% rate of positive predictions, we draw a vertical line on x = 0.10 and read the lift value where the vertical line crosses the lift curve. If the lift value is 3, it means that the model would produce 3 times the 10%, i.e. 30% rate of positive predictions. 
 
 ![Visualize](images/Lift_Chart.png?raw=true)
 
@@ -248,10 +248,10 @@ The final scores reside in the table <code>Scores</code> of the <code>{{ site.db
 
 <div class="hdi">
 <h2>Deploy</h2>
-XXXThe script <strong>campaign_deployment.R </strong> creates and tests a analytic web service.  The web service can then be used from another application to score future data.  The file <strong>web_scoring.R</strong> can be downloaded to invoke this web service locally on any computer with Microsoft R Server 9.0.1 installed. 
+XXXThe script <strong>campaign_deployment.R</strong> creates and tests a analytic web service.  The web service can then be used from another application to score future data.  The file <strong>web_scoring.R</strong> can be downloaded to invoke this web service locally on any computer with Microsoft R Server 9.0.1 installed. 
 <p></p>
 <div class="alert alert-info" role="alert">
-XXXBefore running  <strong>campaign_web_scoring.R</strong> on any computer, you must first connect to edge node from that computer.
+XXXBefore running <strong>campaign_web_scoring.R</strong> on any computer, you must first connect to edge node from that computer.
 Once you have connected you can also use the web server admin utility to reconfigure or check on the status of the server.
 <p></p>
 Follow <a href="deployr.html">Operationalization with R Server instruction</a> to connect to the edge node and/or use the admin utility.
