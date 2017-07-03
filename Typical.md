@@ -75,7 +75,7 @@ The cluster has been created and data loaded for you when you used the <code>Dep
 -----------------------------------------------------------------
 
 Now let's meet Debra, the Data Scientist. Debra's job is to use historical data to predict a model for future loans. 
-<span class="sql">Debra's preferred language for developing the models is using R and SQL. She uses Microsoft R Services with SQL Server 2016 as it provides the capability to run large datasets and also is not constrained by memory restrictions of Open Source R.
+<span class="sql">Debra's preferred language for developing the models is using R and SQL. She uses SQL Server 2016 with R Services, which run on Microsoft R Server and provides the capability to run large datasets and also is not constrained by memory restrictions of Open Source R.
 </span>
 <span class="hdi">Debra will develop these models using <a href="https://azure.microsoft.com/en-us/services/hdinsight/">HDInsight</a>, the managed cloud Hadoop solution with integration to Microsoft R Server.
 </span>  
@@ -110,7 +110,7 @@ OPTIONAL: You can execute the R code on your local computer if you wish, but you
 
 <div class="onp">
 <p/>
-You can use your favorite IDE to follow along.  If you use Visual Studio, you can add <a href="https://www.visualstudio.com/vs/rtvs/">R Tools for Visual Studio</a>.  Otherwise you might want to try <a href="rstudio.html">R Studio</a>. 
+You can use your favorite IDE to follow along.  If you use Visual Studio, you can add <a href="https://www.visualstudio.com/vs/rtvs/">R Tools for Visual Studio</a>.  Otherwise you might want to try <a href="rstudio.html">RStudio</a>. 
 </div>
 
 <div class="sql">
