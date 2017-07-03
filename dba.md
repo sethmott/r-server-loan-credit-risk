@@ -113,7 +113,7 @@ The stored procedure, `[fill_NA_mode_mean]`, will replace the missing values wit
 ## Step 2a: Splitting the data set
 -------------------------
 
-In this step, we create a stored procedure `[dbo].[splitting]` that splits the data into a training set and a testing set.  It creates a hash function that ensures repeatability and maps loanIds to integers that will be used later to split the data into a training and a testing set.  
+In this step, we create a stored procedure `[dbo].[splitting]` that splits the data into a training set and a testing set.  It creates a hash function that ensures repeatability and maps `loanId` to integers that will be used later to split the data into a training and a testing set.  
 
  The splitting is performed prior to feature engineering instead of in the training step because the feature engineering creates bins based on conditional inference trees that should be built only on the training set. If the bins were computed with the whole data set, the evaluation step would be rigged. 
 
@@ -245,7 +245,7 @@ The first, `[dbo].[compute_operational_metrics]` will:
 
 1. Apply a sigmoid function to the output scores of the logistic regression, in order to spread them in [0,1] and make them more interpretable. This sigmoid uses the average predicted score, so it is saved into the table `Scores_Average` for use in the Production pipeline. 
 
-2. Compute bins for the scores, based on quantiles (we compute the 1%-99% percentiles). 
+2. Compute bins for the scores, based on percentiles (we compute the 1%-99% percentiles). 
 
 3. Take each lower bound of each bin as a decision threshold for default loan classification, and compute the rate of bad loans among loans with a score higher than the threshold. 
 
